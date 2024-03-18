@@ -9,12 +9,13 @@ use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
-use TheIconic\Tracking\GoogleAnalytics\Analytics;
 
 class SendRateCommand extends Command
 {
     public function __construct(
-        private HttpClientInterface $client,
+        private readonly HttpClientInterface $client,
+        private readonly string $gaMeasurementId,
+        private readonly string $gaApiSecret,
     ) {
         parent::__construct();
     }
@@ -33,67 +34,20 @@ class SendRateCommand extends Command
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        // return this if there was no problem running the command
-        // (it's equivalent to returning int(0))
-//        $rates = $this->fetchRates();
-//        $output->writeln('Rates fetched successfully');
-//        $output->writeln(json_encode($rates));
-//
-//        $rates = $this->parseRates($rates);
-//        $output->writeln('Usd rates:');
-//        $output->writeln(json_encode($rates['USD']));
-
         $rates = $this->fetchNBURates();
-//        $output->writeln('Rates fetched successfully');
-//        $output->writeln(json_encode($rates));
-
         $rate = $this->parseNBURatesUSD($rates);
         $output->writeln('Usd rate: ' . $rate);
 
-//        $analytics = $this->configureGA();
-//
-//        $analytics->setTransactionId(time())
-//            ->setEventValue($rate);
-//        $analytics->sendPageview();
+        $this->sendMeasurement($rate);
 
         return Command::SUCCESS;
-
-        // or return this if some error happened during the execution
-        // (it's equivalent to returning int(1))
-        // return Command::FAILURE;
-
-        // or return this to indicate incorrect command usage; e.g. invalid options
-        // or missing arguments (it's equivalent to returning int(2))
-        // return Command::INVALID
-    }
-
-    private function parseRates(array $rates): array
-    {
-        $mappedRates = [];
-        foreach ($rates as $rate) {
-            $mappedRates[$rate['ccy']] = [
-                'buy' => $rate['buy'],
-                'sale' => $rate['sale'],
-            ];
-        }
-
-        return $mappedRates;
-    }
-
-    private function fetchRates(): array
-    {
-        $response = $this->client->request('GET', 'https://api.privatbank.ua/p24api/pubinfo?json&exchange&coursid=5');
-        $content = $response->toArray();
-
-        return $content;
     }
 
     private function fetchNBURates(): array
     {
         $response = $this->client->request('GET', 'https://bank.gov.ua/NBUStatService/v1/statdirectory/exchange?json');
-        $content = $response->toArray();
 
-        return $content;
+        return $response->toArray();
     }
 
     private function parseNBURatesUSD(array $rates): float
@@ -109,22 +63,50 @@ class SendRateCommand extends Command
         return $usdRate;
     }
 
-//    private function configureGA(): Analytics
-//    {
-//// Instantiate the Analytics object
-//// optionally pass TRUE in the constructor if you want to connect using HTTPS
-//        $analytics = new Analytics(true);
-//
-//// Build the GA hit using the Analytics class methods
-//// they should Autocomplete if you use a PHP IDE
-//        $analytics
-//            ->setProtocolVersion('4')
-//                ->setTrackingId('G-BDZV4PBLVQ')
-//            ->setClientId('12345678')
-//            ->setDocumentPath('/main')
-//            ->setIpOverride("202.126.106.175");
-//
-//// When you finish bulding the payload send a hit (such as an pageview or event)
-//        return $analytics;
-//    }
+    private function sendMeasurement(float $rate): void
+    {
+        // Your Measurement ID from GA4
+        $measurement_id = $this->gaMeasurementId;
+
+// Your API Secret created in the GA4 interface
+        $api_secret = $this->gaApiSecret;
+
+// Client ID to associate data with a unique user
+        $client_id = '12345'; // You can generate this or use an existing value
+
+// Prepare the payload
+        $data = [
+            'client_id' => $client_id,
+            'events' => [
+                [
+                    'name' => 'rate_update', // Customize your event name
+                    'params' => [
+                        'rate' => $rate, // Your custom metric value
+                    ],
+                ],
+            ],
+        ];
+
+// Encode data to JSON
+        $json_data = json_encode($data);
+
+// Setup the API endpoint
+        $url = "https://www.google-analytics.com/mp/collect?measurement_id=$measurement_id&api_secret=$api_secret";
+
+// Initialize cURL
+        $ch = curl_init();
+
+// Set cURL options
+        curl_setopt($ch, CURLOPT_URL, $url);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        curl_setopt($ch, CURLOPT_POST, 1);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $json_data);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+// Execute the cURL session
+        curl_exec($ch);
+
+// Close cURL session
+        curl_close($ch);
+    }
 }

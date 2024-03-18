@@ -1,1 +1,1 @@
-* * * * * /bin/sh -c '/usr/local/bin/php /app/bin/console app:send-rate 2>&1 | while IFS= read -r line; do echo "$(date) - $line"; done >> /var/log/cron.log'
+0 * * * * /bin/sh -c '/usr/local/bin/php /app/bin/console app:send-rate 2>&1 | while IFS= read -r line; do echo "$(date) - $line"; done >> /var/log/cron.log'
